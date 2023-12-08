@@ -57,7 +57,7 @@
 
 #define VOLUME_STEPS 20
 
-static gboolean wait_on_eos = TRUE;
+static gboolean wait_on_eos = FALSE;
 
 GST_DEBUG_CATEGORY (play_debug);
 #define GST_CAT_DEFAULT play_debug
@@ -1812,21 +1812,21 @@ real_main (int argc, char **argv)
   gboolean print_version = FALSE;
   gboolean interactive = TRUE;
   gboolean gapless = FALSE;
-  gboolean instant_uri = TRUE;
+  gboolean instant_uri = FALSE;
   gboolean shuffle = FALSE;
   gdouble volume = -1;
   gdouble start_position = 0;
   gboolean accurate_seeks = FALSE;
   gchar **filenames = NULL;
   gchar *audio_sink = NULL;
-  gchar *video_sink = "glimagesink";
+  gchar *video_sink = NULL;
   gchar **uris;
   gchar *flags = NULL;
   guint num, i;
   GError *err = NULL;
   GOptionContext *ctx;
   gchar *playlist_file = NULL;
-  gboolean use_playbin3 = TRUE;
+  gboolean use_playbin3 = FALSE;
   gboolean no_position = FALSE;
 #ifdef HAVE_WINMM
   guint winmm_timer_resolution = 0;
