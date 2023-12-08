@@ -41,6 +41,8 @@
 
 #include <glib/gprintf.h>
 
+#include "czmq.h"
+
 #ifdef HAVE_WINMM
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -55,7 +57,7 @@
 
 #define VOLUME_STEPS 20
 
-static gboolean wait_on_eos = FALSE;
+static gboolean wait_on_eos = TRUE;
 
 GST_DEBUG_CATEGORY (play_debug);
 #define GST_CAT_DEFAULT play_debug
@@ -127,6 +129,9 @@ typedef struct
 
   /* keyboard state tracking */
   gboolean shift_pressed;
+
+  /* zmq socket */
+  zsock_t *oscsock;
 } GstPlay;
 
 static gboolean quiet = FALSE;
@@ -172,6 +177,42 @@ gst_play_printf (const gchar * format, ...)
 }
 
 #define gst_print gst_play_printf
+
+static void osc_cb(GstPlay *play, zosc_t *msg);
+
+gboolean handle_zsock_events(GIOChannel *channel, GIOCondition condition, gpointer user_data) {
+  if (condition & G_IO_IN) {
+    GstPlay *play = user_data;
+    assert(play);
+    while( zsock_has_in(play->oscsock) )
+    {
+        zmsg_t *msg = zmsg_recv(play->oscsock);
+        if (msg != NULL) {
+            // get the sender id
+            zmsg_dump(msg);
+            zsys_notice(zmsg_popstr(msg));
+            // process osc messages
+            zframe_t *oscf = zmsg_pop(msg);
+            assert(zframe_is(oscf));
+            while( oscf )
+            {
+                // Process the received message
+                zosc_t *oscm = zosc_fromframe(oscf);
+
+                // process the osc message
+                zosc_print(oscm);
+                osc_cb(play, oscm);
+
+                zosc_destroy(&oscm);
+                oscf = zmsg_pop(msg);
+            }
+            zmsg_destroy(&msg);
+        }
+    }
+  }
+
+  return TRUE;  // Continue watching for events
+}
 
 static GstPlay *
 play_new (gchar ** uris, const gchar * audio_sink, const gchar * video_sink,
@@ -257,6 +298,17 @@ play_new (gchar ** uris, const gchar * audio_sink, const gchar * video_sink,
   play->bus_watch = gst_bus_add_watch (GST_ELEMENT_BUS (play->playbin),
       play_bus_msg, play);
 
+  // add the osc socket
+  play->oscsock = zsock_new_dgram("udp://*:6200");
+  if (!play->oscsock)
+  {
+    g_error("Can't create UDP (DGRAM) socket at port 6200\n");
+    return NULL;
+  }
+  int fd = zsock_fd(play->oscsock);
+  GIOChannel *channel = g_io_channel_unix_new(fd);
+  g_io_add_watch(channel, G_IO_IN, handle_zsock_events, play);
+
   if (!no_position) {
     play->timeout = g_timeout_add (100, play_timeout, play);
   }
@@ -313,6 +365,7 @@ play_free (GstPlay * play)
   g_free (play->cur_video_sid);
   g_free (play->cur_text_sid);
 
+  zsock_destroy(&play->oscsock);
   g_mutex_clear (&play->selection_lock);
 
   g_free (play);
@@ -1466,6 +1519,151 @@ print_keyboard_help (void)
 }
 
 static void
+osc_cb(GstPlay *play, zosc_t*msg)
+{
+    const char *addr = zosc_address(msg);
+    if ( streq(addr, "/quit") )
+    {
+        g_main_loop_quit (play->loop);
+    }
+    else if ( streq(addr, "/pause") )
+    {
+        toggle_paused (play);
+    }
+    else if ( streq(addr, "/next") )
+    {
+        if (!play_next (play)) {
+          gst_print ("\n%s\n", _("Reached end of play list."));
+          g_main_loop_quit (play->loop);
+        }
+    }
+    else if ( streq(addr, "/prev") )
+    {
+        play_prev (play);
+    }
+    else if ( streq(addr, "/+") )
+    {
+        if (play->rate > -0.2 && play->rate < 0.0)
+          play_set_relative_playback_rate (play, 0.0, TRUE);
+        else if (ABS (play->rate) < 2.0)
+          play_set_relative_playback_rate (play, 0.1, FALSE);
+        else if (ABS (play->rate) < 4.0)
+          play_set_relative_playback_rate (play, 0.5, FALSE);
+        else
+          play_set_relative_playback_rate (play, 1.0, FALSE);
+    }
+    else if ( streq(addr, "/-") )
+    {
+        if (play->rate > 0.0 && play->rate < 0.20)
+            play_set_relative_playback_rate (play, 0.0, TRUE);
+        else if (ABS (play->rate) <= 2.0)
+            play_set_relative_playback_rate (play, -0.1, FALSE);
+        else if (ABS (play->rate) <= 4.0)
+            play_set_relative_playback_rate (play, -0.5, FALSE);
+        else
+            play_set_relative_playback_rate (play, -1.0, FALSE);
+    }
+    else if ( streq(addr, "/d") )
+    {
+        play_set_relative_playback_rate (play, 0.0, TRUE);
+    }
+    else if ( streq(addr, "/d") )
+    {
+        play_set_relative_playback_rate (play, 0.0, TRUE);
+    }
+    else if ( streq(addr, "/trick") )
+    {
+        play_switch_trick_mode (play);
+    }
+    else if ( streq(addr, "/audio") )
+    {
+        play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_AUDIO, true);
+    }
+    else if ( streq(addr, "/video") )
+    {
+        play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_VIDEO, true);
+    }
+    else if ( streq(addr, "/subtitle") )
+    {
+        play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_SUBTITLE,
+                                   true);
+    }
+    else if ( streq(addr, "/back") )
+    {
+        play_do_seek (play, 0, play->rate, play->trick_mode);
+    }
+    else if ( streq(addr, "/mute") )
+    {
+        play_toggle_audio_mute (play);
+    }
+    else if ( streq(addr, "/back") )
+    {
+        play_toggle_audio_mute (play);
+    }
+    else if ( streq(addr, "/seek") )
+    {
+        float seekv = 0.f;
+        int rc = zosc_pop_float(msg, &seekv);
+        if (rc == 0)
+        {
+            relative_seek (play, seekv);
+        }
+        else
+        {
+            double seekv = 0.;
+            int rc = zosc_pop_double(msg, &seekv);
+            if (rc == 0)
+            {
+                relative_seek (play, seekv);
+            }
+        }
+    }
+    else if ( streq(addr, "/volume") )
+    {
+        float volv = 0.f;
+        int rc = zosc_pop_float(msg, &volv);
+        if (rc == 0)
+        {
+            play_set_relative_volume (play, volv);
+        }
+        else
+        {
+            double volv = 0.;
+            int rc = zosc_pop_double(msg, &volv);
+            if (rc == 0)
+            {
+                play_set_relative_volume (play, volv);;
+            }
+        }
+    }
+    else if ( streq(addr, "/uri") )
+    {
+        char *uri = "";
+        char type = 'x';
+        void *data = zosc_first(msg, &type);
+        int rc = zosc_pop_string(msg, &uri);
+        if (rc == 0)
+        {
+            g_object_set (play->playbin, "uri", uri, NULL);
+        }
+        else
+        {
+            double volv = 0.;
+            int rc = zosc_pop_double(msg, &volv);
+            if (rc == 0)
+            {
+                play_set_relative_volume (play, volv);;
+            }
+        }
+    }
+    else
+    {
+        zsys_warning("unknown osc message %s");
+        zosc_print(msg);
+    }
+}
+
+static void
 keyboard_cb (const gchar * key_input, gpointer user_data)
 {
   GstPlay *play = (GstPlay *) user_data;
@@ -1614,21 +1812,21 @@ real_main (int argc, char **argv)
   gboolean print_version = FALSE;
   gboolean interactive = TRUE;
   gboolean gapless = FALSE;
-  gboolean instant_uri = FALSE;
+  gboolean instant_uri = TRUE;
   gboolean shuffle = FALSE;
   gdouble volume = -1;
   gdouble start_position = 0;
   gboolean accurate_seeks = FALSE;
   gchar **filenames = NULL;
   gchar *audio_sink = NULL;
-  gchar *video_sink = NULL;
+  gchar *video_sink = "glimagesink";
   gchar **uris;
   gchar *flags = NULL;
   guint num, i;
   GError *err = NULL;
   GOptionContext *ctx;
   gchar *playlist_file = NULL;
-  gboolean use_playbin3 = FALSE;
+  gboolean use_playbin3 = TRUE;
   gboolean no_position = FALSE;
 #ifdef HAVE_WINMM
   guint winmm_timer_resolution = 0;
