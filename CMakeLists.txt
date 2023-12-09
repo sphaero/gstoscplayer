@@ -3,12 +3,11 @@ cmake_minimum_required(VERSION 3.5)
 project(gstoscplayer LANGUAGES C)
 
 find_package(PkgConfig)
-find_package(Gettext)
-pkg_check_modules(GST REQUIRED
-    gstreamer-play-1.0
-    gstreamer-audio-1.0
-    gstreamer-app-1.0
-    gstreamer-tag-1.0
+pkg_check_modules(GST 
+    gstreamer-1.0 
+    gstreamer-audio-1.0 
+    gstreamer-app-1.0 
+    gstreamer-tag-1.0 
     gstreamer-pbutils-1.0)
 
 pkg_check_modules(CZMQ REQUIRED
