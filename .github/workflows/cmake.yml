@@ -58,10 +58,9 @@ jobs:
     - name: Configure CMake
       run: |
         cd gst-build/builddir
-        ninja devenv
+        ninja -v devenv
         cd -
         env
-        pkg-config --list-all
         gst-launch-1.0 --gst-version
         cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} $CMAKE_OPTIONS
         cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
