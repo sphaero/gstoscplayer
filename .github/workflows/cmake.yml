@@ -51,7 +51,6 @@ jobs:
       run: |
         git clone --branch 1.18 https://github.com/GStreamer/gst-build.git
         cd gst-build
-        pip3 install --user meson
         meson builddir
         ninja -C builddir
 
