@@ -40,7 +40,7 @@ jobs:
         repo-name: obs
         repo: deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/ ./
         keys-asc: https://download.opensuse.org/repositories/network:/messaging:/zeromq:/git-draft/xUbuntu_22.04/Release.key
-        install: meson flex bison libunstring-dev nasm libzmq5 libzmq3-dev libczmq-dev libglx-dev mesa-common-dev libasound2-dev libglew-dev libunwind-dev libmicrohttpd-dev
+        install: meson flex bison libunistring-dev nasm libzmq5 libzmq3-dev libczmq-dev libglx-dev mesa-common-dev libasound2-dev libglew-dev libunwind-dev libmicrohttpd-dev
 
     - name: Add brew packages
       if: ${{ contains( matrix.os, 'macos' ) }}
