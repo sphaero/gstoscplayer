@@ -45,7 +45,7 @@ jobs:
     - name: Add brew packages
       if: ${{ contains( matrix.os, 'macos' ) }}
       shell: bash
-      run: brew install meson flex bison nasm automake libmicrohttpd
+      run: brew install meson flex bison nasm automake libmicrohttpd cairo ffmpeg gtk+3 gtk4 lame libsoup x264 dav1d glib glib-networking graphene json-glib openssl@3 xz openexr
 
     - name: Gstreamer
       run: |
