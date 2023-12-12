@@ -57,8 +57,9 @@ jobs:
 
     - name: Configure CMake
       run: |
-        env
-        cd gst-build && ninja -C builddir devenv && cd -
+        cd gst-build/builddir
+        ninja devenv
+        cd -
         env
         pkg-config --list-all
         gst-launch-1.0 --gst-version
